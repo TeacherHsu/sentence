@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>中文句子挖空填詞測驗</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <!-- 新增 jsPDF 和 html2canvas 的 CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #F0FFFF; /* 淺藍綠色背景 */
+        }
+        .main-container {
+            background-color: white;
+            border-radius: 1.5rem;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease-in-out;
+        }
+        .option-btn {
+            background-color: #afeeee; /* 淺藍綠色 */
+            color: #1e3a8a; /* 深藍色文字 */
+            transition: all 0.3s ease;
+            border: 3px solid transparent;
+        }
+        .option-btn:hover {
+            background-color: #98e0e0;
+        }
+        .option-btn.selected {
+            border-color: #3b82f6; /* 藍色邊框表示已選 */
+            background-color: #98e0e0;
+        }
+        .option-btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+        .correct {
+            background-color: #22c55e !important; /* 綠色 */
+            color: white !important;
+            border-color: #16a34a !important;
+        }
+        .incorrect-reveal {
+            background-color: #ef4444 !important; /* 紅色 */
+            color: white !important;
+            border-color: #dc2626 !important;
+        }
+        .speaker-btn {
+            background-color: #f0f9ff;
+            color: #2563eb;
+            border-radius: 50%;
+            width: 3rem;
+            height: 3rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: all 0.2s ease;
+        }
+        .speaker-btn:hover {
+            background-color: #e0f2fe;
+            transform: scale(1.1);
+        }
+        .progress-bar-container {
+            width: 100%;
+            background-color: #e0e0e0;
+            border-radius: 9999px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 1rem;
+            background-color: #2dd4bf; /* 藍綠色 */
+            width: 0%;
+            transition: width 0.5s ease-in-out;
+            border-radius: 9999px;
+        }
+        .word-preview-item {
+            background-color: #f0f8ff;
+            border-radius: 0.75rem;
+            padding: 0.75rem;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .word-preview-item:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-5xl mx-auto">
+        
+        <div class="text-center mb-6">
+            <h1 class="text-3xl font-bold text-teal-800">中文語文挖空填詞測驗</h1>
+        </div>
+
+        
+        <div id="preview-container" class="main-container p-6 md:p-8">
+             <h2 class="text-3xl font-bold text-center text-teal-700 mb-6">本單元詞語與例句預覽</h2>
+             
+             <div class="mb-6 flex flex-col sm:flex-row items-center justify-center gap-4">
+                 <label for="voice-select" class="text-xl font-semibold text-gray-700">選擇朗讀語音:</label>
+                 <select id="voice-select" class="p-2 border rounded-lg shadow-sm text-lg w-full sm:w-auto"></select>
+             </div>
+             
+             <div id="word-list" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
+             </div>
+             <div id="loading-status" class="text-center text-gray-600 mb-2 font-medium"></div>
+             <p id="loading-message" class="text-center text-gray-500 mb-6">AI 智慧圖片正在背景生成中，請稍待...</p>
+             
+             <div class="text-center flex flex-col sm:flex-row justify-center items-center gap-4">
+                <button id="start-quiz-btn" class="bg-teal-500 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:bg-teal-600 transition-transform transform hover:scale-105 disabled:bg-gray-400 disabled:cursor-not-allowed" disabled>開始測驗</button>
+                <button id="download-all-btn" class="bg-emerald-500 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:bg-emerald-600 transition-transform transform hover:scale-105 disabled:bg-gray-400 disabled:cursor-not-allowed" disabled>下載題目</button>
+             </div>
+        </div>
+
+        
+        <div id="quiz-container" class="hidden main-container p-6 md:p-8">
+            
+            <div class="mb-4">
+                 <div class="flex justify-between items-center mb-2">
+                    <div id="question-counter" class="text-lg font-semibold text-gray-600"></div>
+                    <div id="score-counter" class="text-lg font-bold text-teal-600">分數: 0</div>
+                </div>
+                <div class="progress-bar-container">
+                    <div id="progress-bar" class="progress-bar"></div>
+                </div>
+            </div>
+
+            
+            <div class="flex flex-col md:flex-row gap-6 md:gap-8 items-center">
+                
+                <div class="w-full md:w-1/2">
+                    <img id="question-image" src="" alt="題目圖片" class="w-full h-64 md:h-96 object-cover rounded-xl bg-gray-200 shadow-md">
+                </div>
+                
+                
+                <div class="w-full md:w-1/2 flex flex-col justify-center">
+                     
+                    <div class="flex items-center justify-center gap-4 mb-6">
+                        
+                        <h3 id="question-text" class="text-2xl md:text-3xl font-bold text-center text-gray-800"></h3>
+                        <button id="speak-question-btn" class="speaker-btn flex-shrink-0">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+                        </button>
+                    </div>
+                    
+                    
+                    <div id="options-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        
+                    </div>
+                    
+                    
+                    <div id="control-buttons" class="mt-8 text-center">
+                        <button id="check-answer-btn" class="bg-blue-500 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:bg-blue-600 transition-transform transform hover:scale-105 w-full md:w-auto">檢核答案</button>
+                        <button id="next-question-btn" class="hidden bg-teal-500 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:bg-teal-600 transition-transform transform hover:scale-105 w-full md:w-auto">下一題</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        
+        <div id="result-container" class="hidden text-center main-container p-8">
+            <h2 class="text-4xl font-bold text-teal-700 mb-4">測驗完成！</h2>
+            <p class="text-2xl text-gray-600 mb-2">你的最終分數是</p>
+            <p id="final-score" class="text-6xl font-extrabold text-teal-500 mb-8"></p>
+            <div id="result-buttons" class="flex flex-col sm:flex-row justify-center items-center gap-4">
+                <button id="restart-btn" class="bg-teal-500 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:bg-teal-600 transition-transform transform hover:scale-105 w-full sm:w-auto">全部重測</button>
+                <button id="retry-incorrect-btn" class="hidden bg-red-500 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:bg-red-600 transition-transform transform hover:scale-105 w-full sm:w-auto">錯題重測</button>
+            </div>
+        </div>
+    </div>
+    
+    <footer class="text-center p-4 text-gray-600 mt-8 w-full">
+        <div class="flex items-center justify-center gap-3">
+            <span class="font-semibold">@spedmix2025</span>
+        </div>
+    </footer>
+
+
+    <script>
+        // *** 詞彙與句子資料庫 (已更新為短語練習) ***
+        const vocabulary = [
+            // ● 內心既激動又慚愧
+            { chinese: '激動又慚愧', sentence: '內心既激動又慚愧。' },
+            { chinese: '有趣又豐富', sentence: '活動既有趣又豐富。' },
+            { chinese: '好聽又輕快', sentence: '音樂既好聽又輕快。' },
+            { chinese: '沙啞又低沉', sentence: '聲音既沙啞又低沉。' },
+            { chinese: '營養又好吃', sentence: '午餐既營養又好吃。' },
+
+            // ● 激發自己的潛能
+            { chinese: '潛能', sentence: '激發自己的潛能。' },
+            { chinese: '士氣', sentence: '提升同學的士氣。' },
+            { chinese: '想法', sentence: '說出心中的想法。' },
+            { chinese: '書包', sentence: '打開學生的書包。' },
+            { chinese: '水果', sentence: '拿起午餐的水果。' },
+
+            // ● 滾滾的洪水
+            { chinese: '滾滾的', sentence: '滾滾的洪水。' },
+            { chinese: '熊熊的', sentence: '熊熊的烈火。' },
+            { chinese: '圓圓的', sentence: '圓圓的月亮。' },
+            { chinese: '黑黑的', sentence: '黑黑的小巷。' },
+            { chinese: '硬硬的', sentence: '硬硬的石頭。' },
+
+            // ● 熱騰騰的果醬滋味
+            { chinese: '熱騰騰的', sentence: '熱騰騰的果醬滋味。' },
+            { chinese: '香噴噴的', sentence: '香噴噴的炒飯滋味。' },
+            { chinese: '甜蜜蜜的', sentence: '甜蜜蜜的蛋糕滋味。' },
+            { chinese: '酸溜溜的', sentence: '酸溜溜的檸檬滋味。' },
+
+            // ● 流淌出如此豐沛的汁液
+            { chinese: '豐沛的', sentence: '流淌出如此豐沛的汁液。' },
+            { chinese: '有趣的', sentence: '書寫出如此有趣的故事。' },
+            { chinese: '好聽的', sentence: '創作出如此好聽的音樂。' },
+            { chinese: '美麗的', sentence: '打造出如此美麗的房子。' },
+
+            // ● 真實而美好的味道
+            { chinese: '真實而美好', sentence: '真實而美好的味道。' },
+            { chinese: '明亮而溫暖', sentence: '明亮而溫暖的陽光。' },
+            { chinese: '柔軟而舒適', sentence: '柔軟而舒適的枕頭。' },
+            { chinese: '慈祥而溫和', sentence: '慈祥而溫和的眼神。' },
+            { chinese: '聰明而溫柔', sentence: '聰明而溫柔的媽媽。' },
+
+            // ● 一場優美的舞蹈
+            { chinese: '優美的', sentence: '一場優美的舞蹈。' },
+            { chinese: '美麗的', sentence: '一幅美麗的畫作。' },
+            { chinese: '悅耳的', sentence: '一曲悅耳的音樂。' },
+            { chinese: '恐怖的', sentence: '一場恐怖的電影。' },
+            { chinese: '好吃的', sentence: '一顆好吃的水果。' },
+        ];
+        
+        // --- DOM 元素宣告 (整合匯出按鈕) ---
+        const downloadAllBtn = document.getElementById('download-all-btn');
+        const previewContainer = document.getElementById('preview-container');
+        const wordList = document.getElementById('word-list');
+        const startQuizBtn = document.getElementById('start-quiz-btn');
+        const quizContainer = document.getElementById('quiz-container');
+        const resultContainer = document.getElementById('result-container');
+        const questionCounter = document.getElementById('question-counter');
+        const scoreCounter = document.getElementById('score-counter');
+        const questionImage = document.getElementById('question-image');
+        const questionText = document.getElementById('question-text');
+        const optionsContainer = document.getElementById('options-container');
+        const checkAnswerBtn = document.getElementById('check-answer-btn');
+        const nextQuestionBtn = document.getElementById('next-question-btn');
+        const speakQuestionBtn = document.getElementById('speak-question-btn');
+        const restartBtn = document.getElementById('restart-btn');
+        const finalScore = document.getElementById('final-score');
+        const progressBar = document.getElementById('progress-bar');
+        const resultButtonsContainer = document.getElementById('result-buttons');
+        const loadingStatus = document.getElementById('loading-status');
+        const loadingMessage = document.getElementById('loading-message');
+        const retryIncorrectBtn = document.getElementById('retry-incorrect-btn');
+        const voiceSelect = document.getElementById('voice-select'); 
+
+        let shuffledQuestions = [];
+        let currentQuestionIndex = 0;
+        let score = 0;
+        let attempts = 0;
+        let selectedButton = null;
+        let synth = window.speechSynthesis;
+        let imageCache = {}; 
+        let imageGenerationPromises = [];
+        let incorrectlyAnswered = [];
+        let timerInterval = null;
+        let quizWords = [];
+        let isRetryMode = false; 
+        let selectedVoiceObject = null; 
+
+        // --- 語音設定函式 ---
+        function setupVoiceSelection() {
+            const populateVoices = () => {
+                const voices = synth.getVoices().filter(v => v.lang.startsWith('zh-'));
+                voiceSelect.innerHTML = '';
+                if (voices.length === 0) {
+                    const option = document.createElement('option');
+                    option.textContent = '未找到中文語音';
+                    voiceSelect.appendChild(option);
+                    return;
+                }
+                voices.forEach((voice, index) => {
+                    const option = document.createElement('option');
+                    option.textContent = `${voice.name} (${voice.lang})`;
+                    option.value = voice.name;
+                    voiceSelect.appendChild(option);
+                    if (index === 0) {
+                        selectedVoiceObject = voice;
+                        voiceSelect.value = voice.name;
+                    }
+                });
+                voiceSelect.addEventListener('change', (event) => {
+                    const selectedName = event.target.value;
+                    selectedVoiceObject = voices.find(v => v.name === selectedName);
+                    speak("您已選擇新的朗讀語音。");
+                });
+            };
+            if (synth.onvoiceschanged !== undefined) {
+                synth.onvoiceschanged = populateVoices;
+            }
+            populateVoices();
+        }
+
+
+        // *** 函式 1: 圖片生成 (Gemini 翻譯 + Imagen 3 生成，包含指數退避) ***
+        async function generateImage(chineseSentence, chineseWord) {
+            const apiKey = ""; 
+            const maxRetries = 3;
+            const geminiApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+            const systemInstructionZh = `你是一個頂級的圖像生成提示詞專家。你的任務是將提供的中文場景描述，轉換成最適合 Imagen 3.0 模型執行的高品質、純英文提示詞。\n風格要求：必須是**皮克斯風格 (Pixar style) 的高細節 3D 渲染 (high detailed 3D rendering) 圖像**，色彩鮮豔，適合兒童教育內容。\n關鍵規則：\n1. 產出的英文提示詞中，絕對不能包含任何文字、字母、數字或標籤。\n2. 必須在提示詞中加入 "4:3 aspect ratio" 尺寸要求。\n3. 必須準確地描述中文句子所表達的場景和情境。\n4. 最終只輸出英文提示詞內容，不要包含任何額外的解釋或標題。`;
+            const translationPayload = {
+                contents: [{ parts: [{ text: chineseSentence }] }],
+                systemInstruction: { parts: [{ text: systemInstructionZh }] }
+            };
+            let translatedPrompt = null;
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(geminiApiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(translationPayload) });
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    const result = await response.json();
+                    translatedPrompt = result?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+                    if (translatedPrompt) break; 
+                    else throw new Error('Invalid translation data');
+                } catch (error) {
+                    if (i < maxRetries - 1) await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
+                    else {
+                        translatedPrompt = `High-quality, Pixar style, high detailed 3D rendering of the scene described in Chinese: ${chineseSentence}. 4:3 aspect ratio. No text.`;
+                        break;
+                    }
+                }
+            }
+            const imagenApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${apiKey}`;
+            const imagePayload = { instances: [{ prompt: translatedPrompt }], parameters: { "sampleCount": 1 } };
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(imagenApiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(imagePayload) });
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    const result = await response.json();
+                    const base64Data = result?.predictions?.[0]?.bytesBase64Encoded;
+                    if (base64Data) {
+                        imageCache[chineseWord] = `data:image/png;base64,${base64Data}`;
+                        return;
+                    } else throw new Error('Invalid image data');
+                } catch (error) {
+                    if (i < maxRetries - 1) await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
+                    else {
+                        imageCache[chineseWord] = `https://placehold.co/600x400/afeeee/1e3a8a?text=${encodeURIComponent('圖片載入失敗: ' + chineseWord)}&font=noto+sans+tc`;
+                        return;
+                    }
+                }
+            }
+        }
+        
+        // *** 函式 2: 發音 (固定中文 & 挖空處省略 & 使用選定語音) ***
+        function speak(text) {
+            if (synth.speaking) synth.cancel();
+            let utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'zh-TW'; 
+            utterance.rate = 0.9;
+            if (selectedVoiceObject) utterance.voice = selectedVoiceObject;
+            synth.speak(utterance);
+        }
+
+        function shuffleArray(array) {
+            return array.sort(() => Math.random() - 0.5);
+        }
+
+        function showPreview() {
+            previewContainer.classList.remove('hidden');
+            quizContainer.classList.add('hidden');
+            resultContainer.classList.add('hidden');
+            startQuizBtn.disabled = true;
+            downloadAllBtn.disabled = true;
+            wordList.innerHTML = '';
+            quizWords = [...vocabulary];
+            setupVoiceSelection();
+            const allImagesCached = quizWords.every(word => imageCache[word.chinese]);
+            if (allImagesCached) {
+                loadingStatus.textContent = `圖片已載入`;
+                loadingMessage.textContent = '圖片已準備就緒，可以開始測驗！';
+                quizWords.forEach(word => {
+                     const item = document.createElement('div');
+                     item.className = 'word-preview-item';
+                     item.innerHTML = `<p class="font-bold text-lg text-teal-800">${word.chinese}</p><p class="text-gray-600">${word.sentence}</p>`;
+                     item.addEventListener('click', () => speak(word.sentence));
+                     wordList.appendChild(item);
+                });
+                startQuizBtn.disabled = false;
+                downloadAllBtn.disabled = false;
+                return;
+            }
+            let startTime = Date.now();
+            loadingStatus.textContent = '已等待 0 秒';
+            timerInterval = setInterval(() => {
+                const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
+                loadingStatus.textContent = `已等待 ${elapsedTime} 秒`;
+            }, 1000);
+            let generatedImageCount = 0;
+            loadingMessage.textContent = `圖片生成進度: 0 / ${quizWords.length}`;
+            imageGenerationPromises = quizWords.map(word => {
+                const item = document.createElement('div');
+                item.className = 'word-preview-item';
+                item.innerHTML = `<p class="font-bold text-lg text-teal-800">${word.chinese}</p><p class="text-gray-600">${word.sentence}</p>`;
+                item.addEventListener('click', () => speak(word.sentence));
+                wordList.appendChild(item);
+                return generateImage(word.sentence, word.chinese).then(() => {
+                    generatedImageCount++;
+                    loadingMessage.textContent = `圖片生成進度: ${generatedImageCount} / ${quizWords.length}`;
+                });
+            });
+            Promise.all(imageGenerationPromises).then(() => {
+                clearInterval(timerInterval);
+                startQuizBtn.disabled = false;
+                downloadAllBtn.disabled = false;
+                const totalTime = Math.floor((Date.now() - startTime) / 1000);
+                loadingStatus.textContent = `總共耗時 ${totalTime} 秒`;
+                loadingMessage.textContent = '圖片已準備就緒，可以開始測驗！';
+            });
+        }
+
+        function startQuiz(words = [...vocabulary], isRetry = false) {
+            previewContainer.classList.add('hidden');
+            quizContainer.classList.remove('hidden');
+            resultContainer.classList.add('hidden');
+            isRetryMode = isRetry;
+            shuffledQuestions = shuffleArray(words);
+            if (!isRetryMode) {
+                incorrectlyAnswered = [];
+                score = 0;
+                scoreCounter.textContent = `分數: 0`;
+            } else {
+                 score = 0;
+                 scoreCounter.textContent = `分數: 0 (重測)`;
+            }
+            currentQuestionIndex = 0;
+            loadQuestion();
+        }
+
+        function loadQuestion() {
+            attempts = 0;
+            selectedButton = null;
+            optionsContainer.innerHTML = '';
+            checkAnswerBtn.classList.remove('hidden');
+            nextQuestionBtn.classList.add('hidden');
+            if (currentQuestionIndex >= shuffledQuestions.length) {
+                showResults();
+                return;
+            }
+            const totalQuestions = shuffledQuestions.length;
+            const progressPercentage = ((currentQuestionIndex) / totalQuestions) * 100;
+            progressBar.style.width = `${progressPercentage}%`;
+            const currentQuestion = shuffledQuestions[currentQuestionIndex];
+            questionCounter.textContent = `問題 ${currentQuestionIndex + 1} / ${totalQuestions}`;
+            const correctAnswerChinese = currentQuestion.chinese;
+            const blankedSentence = currentQuestion.sentence.replace(correctAnswerChinese, '_____');
+            questionText.textContent = blankedSentence;
+            const speechText = currentQuestion.sentence.replace(currentQuestion.chinese, '... ');
+            speak(speechText); 
+            questionImage.src = imageCache[currentQuestion.chinese] || `https://placehold.co/600x400/afeeee/1e3a8a?text=${encodeURIComponent('圖片載入失敗: ' + currentQuestion.chinese)}&font=noto+sans+tc`;
+            let options = [{...currentQuestion}];
+            let tempVocab = [...vocabulary].filter(v => v.chinese !== correctAnswerChinese);
+            while (options.length < 4 && tempVocab.length > 0) {
+                const randomIndex = Math.floor(Math.random() * tempVocab.length);
+                options.push(tempVocab[randomIndex]);
+                tempVocab.splice(randomIndex, 1);
+            }
+            while (options.length < 4) {
+                 options.push({ chinese: '錯誤選項' + (options.length + 1) });
+            }
+            shuffleArray(options).forEach(optionData => {
+                const option = optionData.chinese; 
+                const button = document.createElement('button');
+                button.classList.add('option-btn', 'p-4', 'text-lg', 'font-semibold', 'rounded-xl', 'w-full', 'text-center');
+                button.textContent = option;
+                button.addEventListener('click', () => {
+                    if (button.disabled) return;
+                    speak(option); 
+                    document.querySelectorAll('.option-btn').forEach(btn => btn.classList.remove('selected'));
+                    button.classList.add('selected');
+                    selectedButton = button;
+                });
+                optionsContainer.appendChild(button);
+            });
+        }
+
+        function checkAnswer() {
+            if (!selectedButton) return;
+            attempts++;
+            const allButtons = Array.from(optionsContainer.children);
+            const currentQuestion = shuffledQuestions[currentQuestionIndex];
+            const correctAnswer = currentQuestion.chinese; 
+            const selectedAnswer = selectedButton.textContent; 
+            const correctFeedbacks = ['太棒了！', '很棒！', '完全正確', '做得好！', '厲害！'];
+            const incorrectFeedbacks = ['沒關係', '再試一次', '還差一點點', '試試別的'];
+            if (selectedAnswer === correctAnswer) {
+                score++;
+                scoreCounter.textContent = `分數: ${score}` + (isRetryMode ? ' (重測)' : '');
+                selectedButton.classList.add('correct');
+                const randomFeedback = correctFeedbacks[Math.floor(Math.random() * correctFeedbacks.length)];
+                speak(randomFeedback); 
+                allButtons.forEach(btn => btn.disabled = true);
+                checkAnswerBtn.classList.add('hidden');
+                nextQuestionBtn.classList.remove('hidden');
+            } else {
+                if (attempts === 1) {
+                    selectedButton.style.visibility = 'hidden';
+                    selectedButton.classList.remove('selected');
+                    const randomFeedback = incorrectFeedbacks[Math.floor(Math.random() * incorrectFeedbacks.length)];
+                    speak(randomFeedback); 
+                    selectedButton = null;
+                } else {
+                    allButtons.forEach(btn => {
+                        btn.disabled = true;
+                        if (btn.textContent === correctAnswer) {
+                            btn.classList.add('correct');
+                        } else if (btn === selectedButton || btn.textContent === selectedAnswer) {
+                            btn.classList.add('incorrect-reveal');
+                        }
+                    });
+                    if (!isRetryMode && !incorrectlyAnswered.some(q => q.chinese === currentQuestion.chinese)) {
+                         incorrectlyAnswered.push(currentQuestion);
+                    }
+                    speak('正確答案是' + correctAnswer); 
+                    checkAnswerBtn.classList.add('hidden');
+                    nextQuestionBtn.classList.remove('hidden');
+                }
+            }
+        }
+        
+        function nextQuestion() {
+            currentQuestionIndex++;
+            loadQuestion();
+        }
+
+        function showResults() {
+            quizContainer.classList.add('hidden');
+            resultContainer.classList.remove('hidden');
+            if (incorrectlyAnswered.length > 0) {
+                 retryIncorrectBtn.classList.remove('hidden');
+                 if (isRetryMode) {
+                     finalScore.textContent = `${score} / ${shuffledQuestions.length} (重測得分)`;
+                 } else {
+                     finalScore.textContent = `${score} / ${vocabulary.length}`;
+                 }
+            } else {
+                 retryIncorrectBtn.classList.add('hidden');
+                 finalScore.textContent = `${score} / ${vocabulary.length}`;
+            }
+            progressBar.style.width = '100%'; 
+        }
+
+        function restartQuiz() {
+            isRetryMode = false;
+            showPreview();
+        }
+        
+        function retryIncorrect() {
+             if (incorrectlyAnswered.length > 0) {
+                startQuiz(incorrectlyAnswered, true);
+             } else {
+                restartQuiz();
+             }
+        }
+
+        // --- 學習單生成相關輔助函式 ---
+        function getOptionsForWord(correctWordObject) {
+            let options = [correctWordObject.chinese];
+            let tempVocab = [...vocabulary].filter(v => v.chinese !== correctWordObject.chinese);
+            while (options.length < 4 && tempVocab.length > 0) {
+                const randomIndex = Math.floor(Math.random() * tempVocab.length);
+                options.push(tempVocab[randomIndex].chinese);
+                tempVocab.splice(randomIndex, 1);
+            }
+             while (options.length < 4) {
+                 options.push('錯誤選項' + (options.length));
+            }
+            return shuffleArray(options);
+        }
+
+        function wrapText(context, text, x, y, maxWidth, lineHeight) {
+            let words = text.split('');
+            let line = '';
+            for(let n = 0; n < words.length; n++) {
+                let testLine = line + words[n];
+                let metrics = context.measureText(testLine);
+                let testWidth = metrics.width;
+                if (testWidth > maxWidth && n > 0) {
+                    context.fillText(line, x, y);
+                    line = words[n];
+                    y += lineHeight;
+                } else {
+                    line = testLine;
+                }
+            }
+            context.fillText(line, x, y);
+        }
+
+        function createQuestionImage(question, index) {
+            return new Promise((resolve, reject) => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 800;
+                canvas.height = 450;
+                const ctx = canvas.getContext('2d');
+
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                const img = new Image();
+                img.crossOrigin = "Anonymous";
+                img.onload = () => {
+                    const boxX = 25;
+                    const boxY = 25;
+                    const boxWidth = 350;
+                    const boxHeight = canvas.height - 50;
+                    const imgAspectRatio = img.naturalWidth / img.naturalHeight;
+                    const boxAspectRatio = boxWidth / boxHeight;
+                    let drawWidth, drawHeight;
+                    if (imgAspectRatio > boxAspectRatio) {
+                        drawWidth = boxWidth;
+                        drawHeight = drawWidth / imgAspectRatio;
+                    } else {
+                        drawHeight = boxHeight;
+                        drawWidth = drawHeight * imgAspectRatio;
+                    }
+                    const drawX = boxX + (boxWidth - drawWidth) / 2;
+                    const drawY = boxY + (boxHeight - drawHeight) / 2;
+                    ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+
+                    const textStartX = boxX + boxWidth + 40;
+                    const textMaxWidth = canvas.width - textStartX - 25;
+                    ctx.fillStyle = '#333333';
+                    ctx.font = '32px "Noto Sans TC"';
+                    ctx.textAlign = 'left';
+                    const blankedSentence = question.sentence.replace(question.chinese, '(    )');
+                    wrapText(ctx, blankedSentence, textStartX, 80, textMaxWidth, 50);
+
+                    const options = getOptionsForWord(question);
+                    const optionLabels = ['(A)', '(B)', '(C)', '(D)'];
+                    ctx.font = '28px "Noto Sans TC"';
+                    const optionStartY = 220;
+                    const optionLineHeight = 55;
+
+                    options.forEach((opt, i) => {
+                        const y = optionStartY + i * optionLineHeight;
+                        const optionText = `${optionLabels[i]} ${opt}`;
+                        ctx.fillText(optionText, textStartX, y);
+                    });
+
+                    canvas.toBlob(blob => {
+                        if (blob) resolve(blob);
+                        else reject(new Error('Canvas to Blob conversion failed'));
+                    }, 'image/png');
+                };
+                img.onerror = () => reject(new Error('Image loading failed for worksheet generation.'));
+                img.src = imageCache[question.chinese];
+            });
+        }
+
+        // --- 整合版學習資源匯出函式 (ZIP + PDF) ---
+        async function generateAndDownloadAll() {
+            loadingMessage.textContent = '正在準備匯出所有學習資料...';
+            startQuizBtn.disabled = true;
+            downloadAllBtn.disabled = true;
+
+            try {
+                const zip = new JSZip();
+
+                // --- 步驟 1: 生成所有單獨的 PNG 圖檔並加入 ZIP ---
+                loadingMessage.textContent = '步驟 1/3: 正在生成學習單圖片 (PNG)...';
+                const imagePromises = quizWords.map((word, index) => {
+                    return createQuestionImage(word, index).then(blob => {
+                        zip.file(`題目-${index + 1}-${word.chinese}.png`, blob);
+                        loadingMessage.textContent = `步驟 1/3: 已生成 ${index + 1} / ${quizWords.length} 張圖片...`;
+                    });
+                });
+                await Promise.all(imagePromises);
+
+                // --- 步驟 2: 生成 PDF 檔案並加入 ZIP ---
+                loadingMessage.textContent = '步驟 2/3: 正在生成學習單 (PDF)...';
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF('p', 'mm', 'a4');
+                const pageHeight = doc.internal.pageSize.getHeight();
+                const pageWidth = doc.internal.pageSize.getWidth();
+                const margin = 10;
+                let y = margin;
+
+                const tempContainer = document.createElement('div');
+                tempContainer.style.position = 'absolute';
+                tempContainer.style.left = '-9999px';
+                tempContainer.style.width = '180mm';
+                tempContainer.style.fontFamily = "'Noto Sans TC', sans-serif";
+                document.body.appendChild(tempContainer);
+
+                for (let i = 0; i < quizWords.length; i++) {
+                    const word = quizWords[i];
+                    const questionBlock = document.createElement('div');
+                    questionBlock.style.border = '1px solid #000';
+                    questionBlock.style.padding = '4mm';
+                    questionBlock.style.marginBottom = '4mm';
+                    questionBlock.style.display = 'flex';
+                    questionBlock.style.alignItems = 'center';
+                    questionBlock.style.width = '100%';
+                    questionBlock.style.backgroundColor = 'white';
+
+                    const options = getOptionsForWord(word);
+                    const optionsHTML = options.map((opt, index) => `<p style="margin: 4px 0; font-size: 16px;">(${String.fromCharCode(65 + index)}) ${opt}</p>`).join('');
+                    
+                    questionBlock.innerHTML = `
+                        <div style="flex: 1; padding-right: 4mm;">
+                           <img src="${imageCache[word.chinese]}" style="max-width: 100%; height: auto; border-radius: 6px;" />
+                        </div>
+                        <div style="flex: 2.5;">
+                           <p style="font-size: 18px; font-weight: bold; margin-bottom: 8px;">題目：${word.sentence.replace(word.chinese, ' (__) ')}</p>
+                           ${optionsHTML}
+                        </div>
+                    `;
+                    tempContainer.appendChild(questionBlock);
+
+                    const canvas = await html2canvas(questionBlock, { scale: 2 });
+                    const imgData = canvas.toDataURL('image/png');
+                    const imgProps = doc.getImageProperties(imgData);
+                    const imgWidth = pageWidth - margin * 2;
+                    const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
+
+                    if (y + imgHeight + 5 > pageHeight - margin) {
+                        doc.addPage();
+                        y = margin;
+                    }
+                    
+                    doc.addImage(imgData, 'PNG', margin, y, imgWidth, imgHeight);
+                    y += imgHeight + 5;
+                    tempContainer.removeChild(questionBlock);
+                }
+                document.body.removeChild(tempContainer);
+
+                const pdfBlob = doc.output('blob');
+                zip.file('中文挖空填詞學習單.pdf', pdfBlob);
+
+                // --- 步驟 3: 壓縮成 ZIP 並下載 ---
+                loadingMessage.textContent = '步驟 3/3: 正在壓縮檔案...';
+                const zipBlob = await zip.generateAsync({ type: "blob" });
+                saveAs(zipBlob, "中文挖空填詞學習資源包.zip");
+                loadingMessage.textContent = '學習資源包已成功匯出！';
+
+            } catch (error) {
+                loadingMessage.textContent = '匯出學習資源時發生錯誤，請重試。';
+                console.error("Combined export failed:", error);
+            } finally {
+                startQuizBtn.disabled = false;
+                downloadAllBtn.disabled = false;
+            }
+        }
+
+
+        // --- 事件監聽器 ---
+        startQuizBtn.addEventListener('click', () => startQuiz());
+        checkAnswerBtn.addEventListener('click', checkAnswer);
+        nextQuestionBtn.addEventListener('click', nextQuestion);
+        restartBtn.addEventListener('click', restartQuiz);
+        speakQuestionBtn.addEventListener('click', () => {
+             const currentQuestion = shuffledQuestions[currentQuestionIndex];
+             const speechText = currentQuestion.sentence.replace(currentQuestion.chinese, '... ');
+             speak(speechText);
+        });
+        retryIncorrectBtn.addEventListener('click', retryIncorrect);
+        downloadAllBtn.addEventListener('click', generateAndDownloadAll);
+
+
+        // 初始化
+        window.onload = showPreview;
+    </script>
+</body>
+</html>
